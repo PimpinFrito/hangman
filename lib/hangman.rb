@@ -1,3 +1,5 @@
+require 'yaml'
+
 class Game
   WORD_LIST = File.open('word_list.txt').readlines.filter { |word| word.length >= 5 && word.length <= 7 }
   attr_accessor :word, :chances, :already_guessed, :display_word
@@ -6,17 +8,14 @@ class Game
     @word = word
     @chances = chances
     @already_guessed = already_guessed
-    if already_guessed.empty?
-      @display_word = Array.new(word.length, '_')
-    else
-      load_display_word
-    end
-    puts display_word.class
+    @display_word = Array.new(word.length, '_')
+    load_display_word if already_guessed != []
   end
 
   def load_display_word
-    already_guessed.each do |letter|
-      @display_word = update_display(letter, display_word)
+    @already_guessed.each do |letter|
+      puts letter
+      update_display(letter)
     end
   end
 
@@ -33,42 +32,80 @@ class Game
     true
   end
 
-  def update_display(guess, display_word)
-    word.split('').each_with_index do |letter, index|
-      display_word[index] = word[index] if letter == guess
+  def update_display(guess)
+    @word.split('').each_with_index do |letter, index|
+      @display_word[index] = word[index] if letter == guess
     end
-    display_word
   end
 
   def play
-    while chances > 0
+    while @chances > 0
       puts ''
-      p word
+      puts word
+      puts display_word.join('')
+      puts "type 'save' to save and end game"
       puts 'Guess a letter: '
-      guess = gets.chomp
-      guess.downcase!
+      guess = gets.chomp.downcase
+      if guess == 'save'
+        save_game
+        puts 'Saved, exiting game...'
+        return
+      end
+
+      # If invalid code, print why and start over, otherwise continue
       next unless valid_guess(guess, already_guessed)
 
-      already_guessed.push(guess) # Adding to already guessed list
+      # Adding to already guessed list
+      already_guessed.push(guess)
 
       if word.include? guess
         puts 'Correct!'
-        display_word = update_display(guess, display_word)
-        break unless display_word.include? '_' # break if display_word doesn't have any guesses left
+        update_display(guess)
+        return if game_won? # End while loop if won
       else
-        chances -= 1
-        puts "Wrong! #{chances} left"
+        @chances -= 1
+        puts "Wrong! #{@chances} left"
       end
     end
-    # While loop ended either user won, or ran out of guesses
-    puts "#{word}"
-    if chances > 0
-      puts 'You won!'
-    else
-      puts 'You lose!'
-    end
+    game_over
+  end
+
+  def game_over
+    puts "Word was #{word}"
+    puts 'You lose!'
+  end
+
+  def game_won?
+    return false if @display_word.include? '_'
+
+    puts 'You Win!'
+    true
+  end
+
+  def save_game
+    dump = YAML.dump({
+                       'word' => @word,
+                       'chances' => @chances,
+                       'already_guessed' => @already_guessed
+                     })
+    File.open('hangman_save.yaml', 'w') { |file| file.puts dump }
+  end
+
+  def self.load_game(savefile)
+    data = YAML.load savefile
+    new(data['word'], data['chances'].to_i, data['already_guessed'])
   end
 end
 
-game = Game.new
+response = ''
+unless %w[y n].include?(response)
+  puts 'Must be N or L'
+  puts 'New game? Or Load save? N or L:'
+  response = gets.chomp
+end
+game = if response == 'n'
+         Game.new
+       else
+         Game.load_game(File.read('hangman_save.yaml'))
+       end
 game.play
